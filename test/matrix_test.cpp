@@ -61,7 +61,7 @@ TEST_F(MatrixFixture, mat_add) {
         }
     }
 
-    object_t ** in = convertMatMatToObject(a, b);
+    object_t ** in = convert_matrices_to_object(a, b);
     
     matrix_t * r = (matrix_t *) mat_add(&m, idx, (void **) in, NULL);
     
@@ -142,7 +142,7 @@ TEST_F(MatrixFixture, mat_add_complex) {
         }
     }
 
-    object_t ** in = convertMatMatToObject(a, b);
+    object_t ** in = convert_matrices_to_object(a, b);
     
     matrix_t * r = (matrix_t *) mat_add(&m, idx, (void **) in, NULL);
     
@@ -179,7 +179,7 @@ TEST_F(MatrixFixture, mat_add_complex_float) {
         }
     }
 
-    object_t ** in = convertMatMatToObject(a, b);
+    object_t ** in = convert_matrices_to_object(a, b);
     
     matrix_t * r = (matrix_t *) mat_add(&m, idx, (void **) in, NULL);
     
@@ -214,7 +214,7 @@ TEST_F(MatrixFixture, mat_mul) {
         }
     }
 
-    object_t ** in = convertMatMatToObject(a, b);
+    object_t ** in = convert_matrices_to_object(a, b);
     
     matrix_t * r = (matrix_t *) mat_mul(&m, idx, (void **) in, NULL);
     
@@ -273,7 +273,7 @@ TEST_F(MatrixFixture, mat_mul_withComplex) {
         }
     }*/
     
-    object_t ** in = convertMatMatToObject(a, b);
+    object_t ** in = convert_matrices_to_object(a, b);
     
     matrix_t * r = (matrix_t *) mat_mul(&m, idx, (void **) in, NULL);
     
@@ -315,7 +315,7 @@ TEST_F(MatrixFixture, scalar_mat_float) {
         }
     }
 
-    object_t ** in = convertScaMatToObject(scalar, a);
+    object_t ** in = convert_scalar_and_matrix_to_object(scalar, a);
     
     matrix_t * r = (matrix_t *) mat_mulsc(&m, idx, (void **) in, NULL);
     
@@ -347,7 +347,7 @@ TEST_F(MatrixFixture, scalar_mat_complex) {
         }
     }
 
-    object_t ** in = convertScaMatToObject(scalar, a);
+    object_t ** in = convert_scalar_and_matrix_to_object(scalar, a);
     
     matrix_t * r = (matrix_t *) mat_mulsc(&m, idx, (void **) in, NULL);
     
@@ -450,7 +450,7 @@ TEST_F(MatrixFixture, matvec_mul3_WithFloat) {
         }
     }
 
-    object_t ** in = convertToObject3(a, b);
+    object_t ** in = convert_vector_and_matrix_to_object(a, b);
 
     r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
 
@@ -492,7 +492,7 @@ TEST_F(MatrixFixture, matvec_mul3_WithComplex) {
 
     struct timeval stop, start;
     gettimeofday(&start, NULL);
-    object_t ** in = convertToObject3(a, b);
+    object_t ** in = convert_vector_and_matrix_to_object(a, b);
     r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
     // printf("aqui teste voltou\n");
     gettimeofday(&stop, NULL);
@@ -537,11 +537,11 @@ TEST_F(MatrixFixture, matvec_mul3_WithComplex_reusingResult) {
         }
     }
 
-    object_t ** in = convertToObject3(a, b);
+    object_t ** in = convert_vector_and_matrix_to_object(a, b);
     r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
     delete_object_array(in, 2);
     for (int i=0; i < 100; i++) {
-        object_t ** in = convertToObject3(r, b);
+        object_t ** in = convert_vector_and_matrix_to_object(r, b);
         vector_t * tmp = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
         delete_object_array(in, 2);
         m.bridges[idx].vector_delete(r);
@@ -643,7 +643,7 @@ TEST_F(MatrixFixture, large_matvec_mul3_WithComplex) {
         matrix_file.close();
     }
 
-    object_t ** in = convertToObject3(a, b);
+    object_t ** in = convert_vector_and_matrix_to_object(a, b);
     printf("matvec_mul3\n");
     r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
     printf("matvec_mul3back\n");
@@ -842,7 +842,7 @@ TEST_F(MatrixFixture, matrix_mul_larger_than_device_memory) {
         }
     }
 
-    object_t ** in = convertMatMatToObject(a, b);
+    object_t ** in = convert_matrices_to_object(a, b);
     
     matrix_t * r = (matrix_t *) mat_mul(&m, idx, (void **) in, NULL);
     

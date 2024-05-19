@@ -15,13 +15,14 @@ extern "C" {
 
  void delete_object_array(object_t ** in, int len);
  void delete_object(object_t * in);
- object_t ** convertToObject(vector_t * a, vector_t * b);
- object_t ** convertToObject3(vector_t * a, matrix_t * b);
- object_t ** convertToObject4(vector_t * a, smatrix_t * b);
- object_t ** convertToObject2(int n, vector_t * a);
- object_t ** convertMatMatToObject(matrix_t * a, matrix_t * b);
- object_t ** convertScaVecToObject(double s, vector_t * a);
- object_t ** convertScaMatToObject(double s, matrix_t * a);
+ 
+ object_t ** convert_vectors_to_object(vector_t * vector_a, vector_t * vector_b);
+ object_t ** convert_matrices_to_object(matrix_t * matrix_a, matrix_t * matrix_b);
+ object_t **convert_int_and_vector_to_object(int int_value, vector_t *vector_a);
+ object_t ** convert_vector_and_matrix_to_object(vector_t * vector_a, matrix_t * matrix_b);
+ object_t ** convert_vector_and_smatrix_to_object(vector_t * vector_a, smatrix_t * smatrix_b);
+ object_t ** convert_scalar_and_vector_to_object(double scalar, vector_t * vector_a);
+ object_t ** convert_scalar_and_matrix_to_object(double scalar, matrix_t * matrix_a);
 
  void ** neblina_type   ( void ** i, int * status );
  int     vec_len        ( bridge_manager_t *m, int index, void ** i, int * status );

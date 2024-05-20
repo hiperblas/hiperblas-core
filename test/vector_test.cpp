@@ -59,7 +59,7 @@ TEST_F(NeblinaCoreFixture, vec_add) {
         b->value.f[i] = 1.;
     }
 
-    object_t ** in = convertToObject(a, b);
+    object_t ** in = convert_vectors_to_object(a, b);
 
     r = (vector_t *) vec_add(&m, idx, (void **) in, NULL);
 
@@ -76,26 +76,6 @@ TEST_F(NeblinaCoreFixture, vec_add) {
     EXPECT_EQ(1, 1);
 
 }
-
-// TEST_F(NeblinaCoreFixture, vec_len) {
-
-//     int n = 3;
-
-//     vector_t * a = m.bridges[idx].vector_new(n, T_FLOAT, 1 );
-
-//     for (int i = 0; i < a->len; i++) {
-//         a->value.f[i] = 1.;
-//     }
-
-//     object_t ** in = convertToObject(a, NULL);
-
-//     int len = vec_len(&m, idx, (void **) in, NULL);
-
-//     EXPECT_EQ(3, len);
-//     delete_object_array(in, 1);
-//     m.bridges[idx].vector_delete(a);
-
-// }
 
 TEST_F(NeblinaCoreFixture, vec_add_complex) {
 
@@ -114,7 +94,7 @@ TEST_F(NeblinaCoreFixture, vec_add_complex) {
         b->value.f[idx + 1] = 1.;
     }
 
-    object_t ** in = convertToObject(a, b);
+    object_t ** in = convert_vectors_to_object(a, b);
 
     r = (vector_t *) vec_add(&m, idx, (void **) in, NULL);
 
@@ -146,7 +126,7 @@ TEST_F(NeblinaCoreFixture, vec_sub) {
         b->value.f[i] = 1.;
     }
 
-    object_t ** in = convertToObject(a, b);
+    object_t ** in = convert_vectors_to_object(a, b);
 
     r = (vector_t *) vec_sub(&m, idx, (void **) in, NULL);
 
@@ -179,7 +159,7 @@ TEST_F(NeblinaCoreFixture, vec_sub_WithComplex) {
         b->value.f[idx + 1] = 1.;
     }
 
-    object_t ** in = convertToObject(a, b);
+    object_t ** in = convert_vectors_to_object(a, b);
 
     r = (vector_t *) vec_sub(&m, idx, (void **) in, NULL);
 
@@ -210,7 +190,7 @@ TEST_F(NeblinaCoreFixture, scalar_vec) {
         a->value.f[i] = 2.;
     }
 
-    object_t ** in = convertScaVecToObject(scalar, a);
+    object_t ** in = convert_scalar_and_vector_to_object(scalar, a);
     
     vector_t * r = (vector_t *) vec_mulsc(&m, idx, (void **) in, NULL);
     
@@ -322,7 +302,7 @@ TEST_F(NeblinaCoreFixture, vec_prod_WithFloat) {
         b->value.f[i] = 2.;
     }
 
-    object_t ** in = convertToObject(a, b);
+    object_t ** in = convert_vectors_to_object(a, b);
 
     r = (vector_t *) vec_prod(&m, idx, (void **) in, NULL);
 
@@ -353,7 +333,7 @@ TEST_F(NeblinaCoreFixture, vec_prod_WithComplex) {
         b->value.f[i + 1] = 2.;
     }
 
-    object_t ** in = convertToObject(a, b);
+    object_t ** in = convert_vectors_to_object(a, b);
 
     r = (vector_t *) vec_prod(&m, idx, (void **) in, NULL);
 
@@ -382,7 +362,7 @@ TEST_F(NeblinaCoreFixture, vec_conj) {
         a->value.f[i + 1] = 2.;
     }
 
-    object_t ** in = convertToObject(a, NULL);
+    object_t ** in = convert_vectors_to_object(a, NULL);
 
     r = (vector_t *) vec_conj(&m, idx, (void **) in, NULL);
 
@@ -409,7 +389,7 @@ TEST_F(NeblinaCoreFixture, vec_add_off) {
         a->value.f[i] = 2.;
     }
     int offset = 2;
-    object_t ** in = convertToObject2(offset, a);
+    object_t ** in = convert_int_and_vector_to_object(offset, a);
 
     r = (vector_t *) vec_add_off(&m, idx, (void **) in, NULL);
 
@@ -436,7 +416,7 @@ TEST_F(NeblinaCoreFixture, vec_sum) {
     }
 
     // printf("vec_sum 1\n");
-    object_t ** in = convertToObject(a, NULL);
+    object_t ** in = convert_vectors_to_object(a, NULL);
     // printf("vec_sum 2\n");
 
     r = (object_t *) vec_sum(&m, idx, (void **) in, NULL);
@@ -468,7 +448,7 @@ TEST_F(NeblinaCoreFixture, addVectorC) {
         b->value.f[i + 1] = 1.;
     }
 
-    object_t ** in = convertToObject(a, b);
+    object_t ** in = convert_vectors_to_object(a, b);
 
     r = (vector_t *) vec_add(&m, idx, (void **) in, NULL);
     
@@ -499,7 +479,7 @@ TEST_F(NeblinaCoreFixture, subVector) {
         b->value.f[i] = 1.;
     }
 
-    object_t ** in = convertToObject(a, b);
+    object_t ** in = convert_vectors_to_object(a, b);
 
     r = (vector_t *) vec_sub(&m, idx, (void **) in, NULL);
 

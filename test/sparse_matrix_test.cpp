@@ -138,7 +138,7 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixFloat) {
     m.bridges[idx].smatrix_pack(b);
 
 
-    object_t ** in = convertToObject4(a, b);
+    object_t ** in = convert_vector_and_smatrix_to_object(a, b);
 
 
     r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
@@ -205,7 +205,7 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixComplex) {
 
     m.bridges[idx].smatrix_pack_complex(b);
 
-    object_t ** in = convertToObject4(a, b);
+    object_t ** in = convert_vector_and_smatrix_to_object(a, b);
 
     r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
 

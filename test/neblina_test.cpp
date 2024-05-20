@@ -184,7 +184,7 @@ TEST_F(NeblinaCoreFixture, matrix_matreqdev) {
 
 }
 
-TEST_F(NeblinaCoreFixture, convertToObject_withNULL) {
+TEST_F(NeblinaCoreFixture, convert_to_object_with_NULL) {
 
     int n = 4;
     vector_t * a = m.bridges[idx].vector_new(n, T_FLOAT, 1, NULL );
@@ -193,7 +193,7 @@ TEST_F(NeblinaCoreFixture, convertToObject_withNULL) {
         a->value.f[i] = 2.;
     }
 
-    object_t ** in = convertToObject(a, NULL);
+    object_t ** in = convert_vectors_to_object(a, NULL);
 
     ASSERT_EQ(T_VECTOR, in[0]->type);
     vector_t * tmp = (vector_t *) in[0]->value.v;

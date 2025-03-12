@@ -28,19 +28,15 @@ vector_t * vector_new( int len, data_type type, int initialize, void * data ) {
 }
 
 void vector_delete( vector_t * v ) {
-//    printf("vector_delete 1\n");
-    if (v->value.f != NULL && v->externalData == 0) {
-//    printf("vector_delete 2\n");
-        free (v->value.f);
-//    printf("vector_delete 3\n");
-    } else if (v->extra != NULL && v->externalData == 0) {
-//    printf("vector_delete 2\n");
-        free (v->extra);
-//    printf("vector_delete 3\n");
+    if (v != NULL) {
+        if (v->value.f != NULL && v->externalData == 0) {
+            free(v->value.f);
+        }
+        if (v->extra != NULL) {  // No need to check externalData for extra
+            free(v->extra);
+        }
+        free(v);
     }
-//    printf("vector_delete 4\n");
-    free (v);
-//    printf("vector_delete 5\n");
 }
 
 void vecreqhost( vector_t * v ) {

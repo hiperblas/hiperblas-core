@@ -521,6 +521,8 @@ void load_plugin(bridge_manager_t *manager, char* library_name, int index) {
 //        printf("Cannot find init in %s: %s", plugin_name, result);
 //    }
     
+    load_function(manager, &(manager->bridges[index].print_smatrix), "print_smatrix", index);
+
 
 }
 

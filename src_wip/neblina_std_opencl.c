@@ -5,11 +5,431 @@
 #include <ctype.h>
 #include <math.h>
 #include <sys/time.h>
+#include <CL/cl.h>
 
 #include "libneblina.h"
 #include "neblina.h"
 #include "neblina_list.h"
 #include "bridge_api.h"
+#include "csr_matrix.h"
+
+char* load_kernel_source(const char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        perror("Error opening kernel file");
+        exit(1);
+    }
+    fseek(fp, 0, SEEK_END);
+    size_t size = ftell(fp);
+    rewind(fp);
+
+    char *source = (char *)malloc(size + 1);
+    fread(source, size, 1, fp);
+    source[size] = '\0';
+    fclose(fp);
+
+    return source;
+}
+
+// Function to check OpenCL errors
+void check_error(cl_int err, const char* operation) {
+    if (err != CL_SUCCESS) {
+        fprintf(stderr, "Error during %s: %d\n", operation, err);
+        exit(EXIT_FAILURE);
+    }
+}
+
+void permute_and_multiply(int *A_col_idx,
+                          int *B_row_ptr, int *B_col_idx, float *B_values,
+                          int *C_row_ptr, int *C_col_idx, float *C_values,
+                          int A_nrows, int A_ncols, int B_ncols) {
+    // OpenCL initialization
+    char *kernel_source = load_kernel_source("permute_and_multiply.cl");
+    cl_platform_id platform;
+    cl_device_id device;
+    cl_context context;
+    cl_command_queue queue;
+    cl_program program;
+    cl_kernel kernel;
+    cl_int err;
+
+    // Get platform and device
+    err = clGetPlatformIDs(1, &platform, NULL);
+    check_error(err, "clGetPlatformIDs");
+
+    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
+    check_error(err, "clGetDeviceIDs");
+
+    // Create context and command queue
+    context = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
+    check_error(err, "clCreateContext");
+
+    queue = clCreateCommandQueue(context, device, 0, &err);
+    check_error(err, "clCreateCommandQueue");
+
+    // Create program and kernel
+    program = clCreateProgramWithSource(context, 1, &kernel_source, NULL, &err);
+    check_error(err, "clCreateProgramWithSource");
+
+    err = clBuildProgram(program, 1, &device, NULL, NULL, NULL);
+    if (err != CL_SUCCESS) {
+        char buffer[2048];
+        clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, NULL);
+        fprintf(stderr, "Error building program:\n%s\n", buffer);
+        exit(EXIT_FAILURE);
+    }
+
+    kernel = clCreateKernel(program, "permute_and_multiply", &err);
+    check_error(err, "clCreateKernel");
+
+    // Create buffers
+    cl_mem A_col_idx_buf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, A_ncols * sizeof(A_col_idx), A_col_idx, &err);
+    check_error(err, "clCreateBuffer A_col_idx");
+
+    cl_mem B_row_ptr_buf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, A_ncols * sizeof(B_row_ptr), B_row_ptr, &err);
+    check_error(err, "clCreateBuffer B_row_ptr");
+
+    cl_mem B_col_idx_buf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, B_ncols * sizeof(B_col_idx), B_col_idx, &err);
+    check_error(err, "clCreateBuffer B_col_idx");
+
+    cl_mem B_values_buf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, B_ncols * sizeof(B_values), B_values, &err);
+    check_error(err, "clCreateBuffer B_values");
+
+    cl_mem C_row_ptr_buf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, A_nrows * sizeof(C_row_ptr), C_row_ptr, &err);
+    check_error(err, "clCreateBuffer C_row_ptr");
+
+    cl_mem C_col_idx_buf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, B_ncols * sizeof(C_col_idx), NULL, &err);
+    check_error(err, "clCreateBuffer C_col_idx");
+
+    cl_mem C_values_buf = clCreateBuffer(context, CL_MEM_WRITE_ONLY, B_ncols * sizeof(C_values), NULL, &err);
+    check_error(err, "clCreateBuffer C_values");
+
+    // Set kernel arguments
+    //__global const int* A_col_idx,
+    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &A_col_idx_buf);
+    check_error(err, "clSetKernelArg 0");;
+
+    //__global const int* B_row_ptr,
+    err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &B_row_ptr_buf);
+    check_error(err, "clSetKernelArg 1");
+
+    //__global const int* B_col_idx,
+    err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &B_col_idx_buf);
+    check_error(err, "clSetKernelArg 2");
+
+    //__global const float* B_values,
+    err = clSetKernelArg(kernel, 3, sizeof(cl_mem), &B_values_buf);
+    check_error(err, "clSetKernelArg 3");
+
+    //__global int* C_row_ptr,
+    err = clSetKernelArg(kernel, 4, sizeof(cl_mem), &C_row_ptr_buf);
+    check_error(err, "clSetKernelArg 4");
+
+    //__global int* C_col_idx,
+    err = clSetKernelArg(kernel, 5, sizeof(cl_mem), &C_col_idx_buf);
+    check_error(err, "clSetKernelArg 5");
+
+    //__global float* C_values,
+    err = clSetKernelArg(kernel, 6, sizeof(cl_mem), &C_values_buf);
+    check_error(err, "clSetKernelArg 6");
+
+    //const int A_nrows,
+    err = clSetKernelArg(kernel, 7, sizeof(int), &A_nrows);
+    check_error(err, "clSetKernelArg 7");
+
+
+    size_t global_work_size = A_nrows;
+    err = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+    check_error(err, "clEnqueueNDRangeKernel");
+
+    // Wait for the kernel to complete
+    clFinish(queue);
+
+    // Read back the results
+    err = clEnqueueReadBuffer(queue, C_col_idx_buf, CL_TRUE, 0, B_ncols * sizeof(C_col_idx), C_col_idx, 0, NULL, NULL);
+    check_error(err, "clEnqueueReadBuffer C_col_idx");
+
+    err = clEnqueueReadBuffer(queue, C_values_buf, CL_TRUE, 0, B_ncols * sizeof(C_values), C_values, 0, NULL, NULL);
+    check_error(err, "clEnqueueReadBuffer C_values");
+    
+    // Print the result matrix in CSR format
+    printf("Result Matrix C in CSR Format:\n");
+    printf("C_row_ptr: ");
+    for (int i = 0; i <= A_nrows; i++) {
+        printf("%d ", C_row_ptr[i]);
+    }
+    printf("\n");
+
+    printf("C_col_idx: ");
+    for (int i = 0; i < C_row_ptr[A_nrows]; i++) {
+        printf("%d ", C_col_idx[i]);
+    }
+    printf("\n");
+
+    printf("C_values: ");
+    for (int i = 0; i < C_row_ptr[A_nrows]; i++) {
+        printf("%.2f ", C_values[i]);
+    }
+    printf("\n");
+
+    // Clean up
+    //clReleaseMemObject(A_row_ptr_buf);
+    clReleaseMemObject(A_col_idx_buf);
+    //clReleaseMemObject(A_values_buf);
+    clReleaseMemObject(B_row_ptr_buf);
+    clReleaseMemObject(B_col_idx_buf);
+    clReleaseMemObject(B_values_buf);
+    clReleaseMemObject(C_row_ptr_buf);
+    clReleaseMemObject(C_col_idx_buf);
+    clReleaseMemObject(C_values_buf);
+    clReleaseKernel(kernel);
+    clReleaseProgram(program);
+    clReleaseCommandQueue(queue);
+    clReleaseContext(context);
+
+    return 0;
+}
+
+// Function to create a CSR matrix
+csr_t* create_csr_matrix(int nrow, int ncol, int max_nnz) {
+    csr_t* matrix = (csr_t*)malloc(sizeof(csr_t));
+    if (!matrix) {
+        fprintf(stderr, "Error: Memory allocation failed for CSR matrix.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    matrix->nrow = nrow;
+    matrix->ncol = ncol;
+    matrix->nnz = 0;
+
+    // Allocate memory for arrays
+    matrix->row_ptr = (int*)calloc(nrow + 1, sizeof(int)); // Verify why using calloc here
+    matrix->col_idx = (int*)malloc(max_nnz * sizeof(int));
+    matrix->values = (float*)malloc(max_nnz * sizeof(float));
+
+    if (!matrix->row_ptr || !matrix->col_idx || !matrix->values) {
+        fprintf(stderr, "Error: Memory allocation failed for CSR matrix arrays.\n");
+        free(matrix->row_ptr);
+        free(matrix->col_idx);
+        free(matrix->values);
+        free(matrix);
+        exit(EXIT_FAILURE);
+    }
+
+    return matrix;
+}
+
+void insert_csr_element(csr_t* matrix, int row, int col, int value) {
+    if (row < 0 || row >= matrix->nrow || col < 0 || col >= matrix->ncol) {
+        fprintf(stderr, "Error: Invalid row or column index.\n");
+        return;
+    }
+
+    // Add value and column index to col_idx and values arrays
+    matrix->col_idx[matrix->nnz] = col;
+    matrix->values[matrix->nnz] = value;
+
+    // Update row_ptr array
+    matrix->row_ptr[row + 1]++; //Why row+1?
+
+    // Increment the number of non-zero elements
+    matrix->nnz++;
+}
+
+// Finalize row_ptr array after all insertions
+// It can be done in parallel
+void finalize_csr_matrix(csr_t* matrix) {
+    for (int i = 1; i <= matrix->nrow; i++) {
+        matrix->row_ptr[i] += matrix->row_ptr[i - 1]; //Storing as a prefix-sum?
+    }
+}
+
+void print_csr_matrix(csr_t* matrix) {
+    if (!matrix) {
+        printf("Error: CSR matrix is NULL.\n");
+        return;
+    }
+
+    printf("CSR Matrix Representation:\n");
+    printf("Number of rows: %d\n", matrix->nrow);
+    printf("Number of columns: %d\n", matrix->ncol);
+    printf("Number of non-zero elements: %d\n\n", matrix->nnz);
+
+    // Print row_ptr array
+    printf("row_ptr: ");
+    for (int i = 0; i <= matrix->nrow; i++) {
+        printf("%d ", matrix->row_ptr[i]);
+    }
+    printf("\n");
+
+    // Print col_idx array
+    printf("col_idx: ");
+    for (int i = 0; i < matrix->nnz; i++) {
+        printf("%d ", matrix->col_idx[i]);
+    }
+    printf("\n");
+
+    // Print values array
+    printf("values: ");
+    for (int i = 0; i < matrix->nnz; i++) {
+        printf("%.1f ", matrix->values[i]);
+    }
+    printf("\n\n");
+
+    // Print the full matrix
+    printf("Full Matrix:\n");
+    for (int i = 0; i < matrix->nrow; i++) {
+        for (int j = 0; j < matrix->ncol; j++) {
+            // Search for value at (i, j)
+            int found = 0;
+            for (int k = matrix->row_ptr[i]; k < matrix->row_ptr[i + 1]; k++) {
+                if (matrix->col_idx[k] == j) {
+                    printf("%.1f\t", matrix->values[k]);
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                printf("%.1f\t", 0.0);
+            }
+            //printf("(%d,%d)", i, j);
+        }
+        printf("\n");
+    }
+}
+
+// Host function to compute C_row_ptr
+// It can be done in parallel
+void compute_C_row_ptr(const int* A_col_idx, const int* B_row_ptr, int* C_row_ptr, int A_nrows) {
+    C_row_ptr[0] = 0; // First row starts at index 0
+    for (int i = 0; i < A_nrows; i++) {
+        int permuted_row = A_col_idx[i];  // Get the row index in B
+        int nnz_in_B_row = B_row_ptr[permuted_row + 1] - B_row_ptr[permuted_row];
+        C_row_ptr[i + 1] = C_row_ptr[i] + nnz_in_B_row;
+    }
+}
+
+void test_GPU_OpenCL(){
+    printf("Teste OpenCL\n");
+
+    /*
+        [ 0  1  0  0 ]
+        [ 1  0  0  0 ]
+        [ 0  0  0  1 ]
+        [ 0  0  1  0 ]
+    */
+    /*
+    csr_t* matrix1 = create_csr_matrix(4, 4, 4);
+    insert_csr_element(matrix1, 0, 1, 1);
+    insert_csr_element(matrix1, 1, 0, 1);
+    insert_csr_element(matrix1, 2, 3, 1);
+    insert_csr_element(matrix1, 3, 2, 1);
+    finalize_csr_matrix(matrix1);
+    */
+
+    /*
+        [ 0  1  0  0 ]
+        [ 0  0  0  1 ]
+        [ 1  0  0  0 ]
+        [ 0  0  1  0 ]
+    */
+    csr_t* matrix1 = create_csr_matrix(4, 4, 4);
+    insert_csr_element(matrix1, 0, 1, 1);
+    insert_csr_element(matrix1, 1, 3, 1);
+    insert_csr_element(matrix1, 2, 0, 1);
+    insert_csr_element(matrix1, 3, 2, 1);
+    finalize_csr_matrix(matrix1);
+
+    /*
+        [ 1  2  0  0 ]
+        [ 2  1  0  0 ]
+        [ 0  0  3  4 ]
+        [ 0  0  4  3 ]
+    */
+    csr_t* matrix2 = create_csr_matrix(4, 4, 8);
+    insert_csr_element(matrix2, 0, 0, 1);
+    insert_csr_element(matrix2, 0, 1, 2);
+    insert_csr_element(matrix2, 1, 0, 2);
+    insert_csr_element(matrix2, 1, 1, 1);
+    insert_csr_element(matrix2, 2, 2, 3);
+    insert_csr_element(matrix2, 2, 3, 4);
+    insert_csr_element(matrix2, 3, 2, 4);
+    insert_csr_element(matrix2, 3, 3, 3);
+    finalize_csr_matrix(matrix2);
+
+    /*
+        [ 2  1  0  0 ]
+        [ 1  2  0  0 ]
+        [ 0  0  4  3 ]
+        [ 0  0  3  4 ]
+    */
+    csr_t* matrix3 = create_csr_matrix(4, 4, 8);
+    matrix3->nnz = matrix2->nnz; // It has the same stricture as matrix2
+    compute_C_row_ptr(matrix1->col_idx, matrix2->row_ptr, matrix3->row_ptr, matrix1->nrow);
+    
+    printf("-----------------\n");
+    for (int i = 0; i <= matrix1->nrow; i++) {
+        printf("%d ", matrix3->row_ptr[i]);
+    }
+    printf("\n");
+    printf("%d\n", matrix3->nrow);
+    printf("%d\n", matrix3->ncol);
+    printf("%d\n", matrix3->nnz);
+    printf("-----------------\n");
+
+    printf("Matrix 1:\n");
+    print_csr_matrix(matrix1);
+    
+    printf("\nMatrix 2:\n");
+    print_csr_matrix(matrix2);
+    
+    permute_and_multiply(matrix1->col_idx, 
+                         matrix2->row_ptr, matrix2->col_idx, matrix2->values,
+                         matrix3->row_ptr, matrix3->col_idx, matrix3->values,
+                         matrix1->nrow, matrix1->ncol, matrix2->ncol);
+
+    // Verify what is happening
+    printf("\nResultado da multiplicação:\n");
+    print_csr_matrix(matrix3);
+
+    // Free memory
+    free(matrix1->row_ptr);
+    free(matrix1->col_idx);
+    free(matrix1->values);
+    free(matrix1);
+
+    free(matrix2->row_ptr);
+    free(matrix2->col_idx);
+    free(matrix2->values);
+    free(matrix2);
+
+    free(matrix3->row_ptr);
+    free(matrix3->col_idx);
+    free(matrix3->values);
+    free(matrix3);
+}
+
+int main() {
+    test_GPU_OpenCL();
+    
+    return 0;
+}
+
+///////////////////////////////////////
+
+void clear_input( void ** i, int nparams ) {
+    int k = 0;
+    object_t ** in = (object_t **) i;
+    for( k = 0; k < nparams; k++ ) {
+        if( type(*in[k]) == T_STRING )
+            free( svalue( *in[k] ) );
+        
+        if( type(*in[k]) == T_COMPLEX ) {
+            complex_t * r = (complex_t *)vvalue( *in[k] );
+            free( r );
+        }         
+    }
+}
 
 void runerror( char * strerr ) {
     fprintf(stderr, " runtime error: %s\n", strerr);
@@ -618,8 +1038,8 @@ void ** copy_vector_from_device( bridge_manager_t *m, int idx, void ** i, int * 
         printf("callocated\n");
 
         printf("1\n");
-        printf("max_mem=%d\n", max_mem);
-        printf("(max_mem / sizeof(double))=%d\n", (max_mem / sizeof(double)));
+        printf("max_mem=%ld\n", max_mem);
+        printf("(max_mem / sizeof(double))=%ld\n", (max_mem / sizeof(double)));
         long qty_chunks = ceil((matrix_size * 1.0) / (max_mem / sizeof(double)));
         printf("qty_chunks=%ld\n", qty_chunks);
         printf("2\n");
@@ -1097,90 +1517,17 @@ matrix_t * mul_complex_scalar_float_mat( bridge_manager_t *mg, int index, comple
 //
 //
 //
-
-void print_smatrix(const smatrix_t* matrix) {
-    if (!matrix) {
-        printf("Matrix is NULL.\n");
-        return;
-    }
-
-    printf("Matrix (%p):\n", (void*)matrix);
-    printf("  Rows: %d, Cols: %d, NNZ: %d\n", matrix->nrow, matrix->ncol, matrix->nnz);
-    printf("  isPacked: %d\n", matrix->isPacked);
-    printf("  type: %d\n", matrix->type);
-    printf("  location: %u\n", matrix->location);
-    printf("  extra: %p\n", matrix->extra);
-    printf("  idxColMem: %p\n", matrix->idxColMem);
-
-    if (matrix->row_ptr) {
-        printf("  row_ptr: ");
-        for (int i = 0; i <= matrix->nrow; i++) {
-            printf("%d ", matrix->row_ptr[i]);
-        }
-        printf("\n");
-    } else {
-        printf("  row_ptr is NULL.\n");
-    }
-
-    if (matrix->col_idx) {
-        printf("  col_idx: ");
-        for (int i = 0; i < matrix->nnz; i++) {
-            printf("%d ", matrix->col_idx[i]);
-        }
-        printf("\n");
-    } else {
-        printf("  col_idx is NULL.\n");
-    }
-
-    if (matrix->values) {
-        printf("  values: ");
-        for (int i = 0; i < matrix->nnz; i++) {
-            printf("%.4f ", matrix->values[i]);
-        }
-        printf("\n");
-    } else {
-        printf("  values is NULL.\n");
-    }
-
-    if (matrix->smat) {
-        printf("  smat:\n");
-        for (int i = 0; i < matrix->nrow; i++) {
-            printf("    Row %d: ", i);
-            slist* current = matrix->smat[i];
-            while (current) {
-                printf("(col: %d, re: %.4f, im: %.4f) ", current->col, current->re, current->im);
-                current = current->next;
-            }
-            printf("\n");
-        }
-    } else {
-        printf("  smat is NULL.\n");
-    }
-}
-
-void printIdxColMem(void* idxColMem, int size) {
-    printf("idxColMem: ");
-    int* arr = (int*)idxColMem;  // Cast to the expected type (e.g., int*)
-    
-    for (int i = 0; i < size; i++) {
-        printf("%d ", arr[i]);
-    }
-    printf("\n");
-}
-
  void ** matvec_mul3( bridge_manager_t *mg, int index, void ** i, int * status ) {
-    
-           
         object_t ** in = (object_t **) i;
         vector_t * v = (vector_t *) vvalue( *in[0] );
         //vector_t * r = (vector_t *) malloc( sizeof( vector_t ) );
         vector_t * r;
-       
+        
         //do I have to assume that it needs to be copied everytime?
         if (v->location != LOCDEV) {
             mg->bridges[index].vecreqdev( v );
         }
-        
+
         if( type( *in[1] ) == T_MATRIX ) {        
 
             matrix_t * m = (matrix_t *) vvalue( *in[1] );
@@ -1211,67 +1558,36 @@ void printIdxColMem(void* idxColMem, int size) {
             return (void *) r;
 
         } else  if( type( *in[1] ) == T_SMATRIX ) {
-            //printf(">\n");
-            
-            smatrix_t * m = (smatrix_t *) vvalue( *in[1] );
-            
-            //printf("m: %p, vvalue(*in[1]): %p\n", (void*)m, (void*)vvalue(*in[1]));
-
-            r = mg->bridges[index].vector_new(m->nrow, m->type, 0, NULL );
-
-            mg->bridges[index].vecreqdev( r );
-
-            //printf("<<<<<<<"); print_smatrix(m);
-
-            //m->location = 0;
-            printf("location: %d \n", m->location);
-            if (m->location != LOCDEV) {
-                mg->bridges[index].smatreqdev( m );
-            }
-
-            //printf("nnz= %d\n", m->nnz);
-            //printIdxColMem(m->idxColMem, m->nnz);
-
-            //printf(">>>>>>>>"); print_smatrix(m);
-
-            //printIdxColMem(m->idxColMem, m->nnz);
-
-            if( m->type == T_FLOAT && v->type == T_FLOAT ) {
-                //printf(">>\n");
-                // printf("sparse matvec_mul3 float x float\n");
-                r->extra = (void*)mg->bridges[index].sparseVecMul_f(v->extra, m->extra, m->row_ptr, m->idxColMem, m->nrow, m->nnz );
-                // printf("sparse  matvec_mul3 back\n");
-//                r->location = LOCDEV;
-//                r->value.f = NULL;
-//                r->len = m->nrow;
+                smatrix_t * m = (smatrix_t *) vvalue( *in[1] );
+                r = mg->bridges[index].vector_new(m->nrow, m->type, 0, NULL );
+                mg->bridges[index].vecreqdev( r );
+                if (m->location != LOCDEV) {
+                    mg->bridges[index].smatreqdev( m );
+                }
+                if( m->type == T_FLOAT && v->type == T_FLOAT ) {
+                    // printf("sparse matvec_mul3 float x float\n");
+                    r->extra = (void*)mg->bridges[index].sparseVecMul_f( m->extra, m->idxColMem, v->extra, m->nrow, m->maxcols );
+                    // printf("sparse  matvec_mul3 back\n");
+//                    r->location = LOCDEV;
+//                    r->value.f = NULL;
+//                    r->len = m->nrow;
 //                    r->type = T_FLOAT;
                     
-            } else if( m->type == T_COMPLEX && v->type == T_COMPLEX ) {
+                } else if( m->type == T_COMPLEX && v->type == T_COMPLEX ) {
                     // printf("sparse matvec_mul3 complex x complex \n");
-                    //printf("nnz= %d\n", m->nnz);
-                    //printIdxColMem(m->idxColMem, m->nnz);
-
-                    printf(":::idxColMem ");
-                    int* arr = (int*)m->idxColMem;  // Cast to the expected type (e.g., int*)
-                        
-                    for (int i = 0; i < m->nnz; i++) {
-                        printf("%d ", arr[i]);
-                    }
-                    printf("\n");
-
-                    r->extra = (void*)mg->bridges[index].sparseComplexVecMul_f(v->extra, m->extra, m->row_ptr, m->idxColMem, m->nrow, m->nnz );
+                    r->extra = (void*)mg->bridges[index].sparseComplexVecMul_f( m->extra, m->idxColMem, v->extra, m->nrow, m->maxcols );
 //                    r->location = LOCDEV;
 //                    r->value.f = NULL;
 //                    r->len = m->nrow;
 //                    r->type = T_COMPLEX;
-            } else {
-                // printf("sparse matvec_mul3 other types\n");
-            }
-            if (status != NULL) {
+                } else {
+                    // printf("sparse matvec_mul3 other types\n");
+                }
+                if (status != NULL) {
                     *status = 0;
-             }
-            return (void *) r;
-            
+                }
+                return (void *) r;
+
         } else if(  type( *in[1] ) == T_RMATRIX ) {
 //                rmatrix_t * m = (rmatrix_t *) vvalue( *in[1] );
 //                r->extra = (void*)rmatVecMul3Complex( m, v->extra, m->ncol, m->nrow );
@@ -1294,7 +1610,8 @@ void printIdxColMem(void* idxColMem, int size) {
                 *status = -1;
             }
             return (void **)NULL;   
-        }             
+        }
+             
 }
 
 // void ** matvec_mul_cpu( void ** i, int * status ) {
@@ -1878,5 +2195,3 @@ void printIdxColMem(void* idxColMem, int size) {
 ////
 ////
 ////
-
-

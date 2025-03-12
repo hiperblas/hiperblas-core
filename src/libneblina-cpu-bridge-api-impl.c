@@ -365,6 +365,7 @@ void* matVecMul3(  double* mat, double* vec, int ncols, int nrows ) {
     return out;    
 }
 
+/* [Hiago] Old functions
 void* sparseVecMul(void* mDev, void* idxCol, void* vDev, int nrows, int maxCols ) {
 //    const int idx = get_global_id(0);
 //    if( idx >= nrows )
@@ -434,6 +435,136 @@ void* sparseComplexVecMul(void* mDev, void* idxCol, void* vDev, int nrows, int m
         vec_out[2*row+1] = sum_im;
     }
     return (void *)vec_out;
+}
+*/
+
+//[Hiago] 
+void* sparseVecMul(void* v, void* m_values, void* m_row_ptr, void* m_col_idx, int m_nrows, int nnz) {
+    if (!v) {
+        fprintf(stderr, "Error: Input vector (v) is NULL in sparseVecMul.\n");
+        return NULL;
+    }
+    if (!m_values) {
+        fprintf(stderr, "Error: Matrix values (m_values) is NULL in sparseVecMul.\n");
+        return NULL;
+    }
+    if (!m_row_ptr) {
+        fprintf(stderr, "Error: Row pointer array (m_row_ptr) is NULL in sparseVecMul.\n");
+        return NULL;
+    }
+    if (!m_col_idx) {
+        fprintf(stderr, "Error: Column index array (m_col_idx) is NULL in sparseVecMul.\n");
+        return NULL;
+    }
+    
+    double* vec_out = (double*)malloc(m_nrows * sizeof(double));
+    if (!vec_out) {
+        fprintf(stderr, "Error: Memory allocation failed for vec_out.\n");
+        return NULL;
+    }
+
+    double* vec_in = (double*)v;
+    int* row_ptr = (int*)m_row_ptr;
+    int* col_idx = (int*)m_col_idx;
+    double* values = (double*)m_values;
+    
+    //#pragma omp parallel for
+    for (int row = 0; row < m_nrows; row++) {
+        double sum = 0.0;
+        if (row_ptr[row] < 0 || row_ptr[row + 1] > nnz) {
+            fprintf(stderr, "Error: row_ptr out of bounds at row %d.\n", row);
+            free(vec_out);
+            return NULL; // it is ivalud with openmp
+        }
+
+        for (int j = row_ptr[row]; j < row_ptr[row + 1]; j++) {
+            int col = col_idx[j];
+            sum += values[j] * vec_in[col];
+        }
+        vec_out[row] = sum;
+    }
+    
+    return (void*)vec_out;
+}
+
+void* sparseComplexVecMul(void* v, void* m_values, void* m_row_ptr, void* m_col_idx, int m_nrows, int nnz) {
+    if (!v) {
+        fprintf(stderr, "Error: Input vector (v) is NULL in sparseVecMul.\n");
+        return NULL;
+    }
+    if (!m_values) {
+        fprintf(stderr, "Error: Matrix values (m_values) is NULL in sparseVecMul.\n");
+        return NULL;
+    }
+    if (!m_row_ptr) {
+        fprintf(stderr, "Error: Row pointer array (m_row_ptr) is NULL in sparseVecMul.\n");
+        return NULL;
+    }
+    if (!m_col_idx) {
+        fprintf(stderr, "Error: Column index array (m_col_idx) is NULL in sparseVecMul.\n");
+        return NULL;
+    }
+    
+    double* vec_out = (double*)malloc(2 * m_nrows * sizeof(double));
+    if (!vec_out) {
+        fprintf(stderr, "Error: Memory allocation failed for vec_out.\n");
+        return NULL;
+    }
+    
+    // Initialize output vector to zero to avoid undefined behavior
+    for (int i = 0; i < 2 * m_nrows; i++) {
+        vec_out[i] = 0.0;
+    }
+
+    double* vec_in = (double*)v; // Real and imaginary parts are stored separately
+    int* row_ptr = (int*)m_row_ptr;
+    int* col_idx = (int*)m_col_idx;
+    double* values = (double*)m_values; // Store real and imaginary parts separately
+    
+    /*
+    printf("nnz= %d\n", nnz);
+    printf("col_idx: ");
+        for(int i = 0; i < nnz; i++)
+            printf("%d ", col_idx[i]);
+        printf("\n");
+    */
+
+    #pragma omp parallel for
+    for (int row = 0; row < m_nrows; row++) {
+        double sum_re = 0.0;
+        double sum_im = 0.0;
+        
+        if (row_ptr[row] < 0 || row_ptr[row + 1] > nnz || row_ptr[row + 1] < row_ptr[row]) {
+            fprintf(stderr, "Error: row_ptr out of bounds or inconsistent at row %d.\n", row);
+            continue;
+        }
+
+        for (int j = row_ptr[row]; j < row_ptr[row + 1]; j++) {
+            if (j < 0 || j >= nnz) {
+                fprintf(stderr, "Error: col_idx out of bounds at index %d.\n", j);
+                continue;
+            }
+            
+            int col = col_idx[j];
+            if (col < 0 || col >= m_nrows) {
+                fprintf(stderr, "Error: col_idx value %d out of bounds.\n", col);
+                continue;
+            }
+            
+            double val_re = values[2 * j];
+            double val_im = values[2 * j + 1];
+            double vec_re = vec_in[2 * col];
+            double vec_im = vec_in[2 * col + 1];
+            
+            // Complex multiplication: (a + bi) * (c + di) = (ac - bd) + (ad + bc)i
+            sum_re += val_re * vec_re - val_im * vec_im;
+            sum_im += val_re * vec_im + val_im * vec_re;
+        }
+        vec_out[2 * row] = sum_re;
+        vec_out[2 * row + 1] = sum_im;
+    }
+    
+    return (void*)vec_out;
 }
 
 void* matVecMul3Complex(  double* mat, double* vec, int ncols, int nrows ) {

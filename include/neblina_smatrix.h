@@ -19,16 +19,26 @@ extern "C" {
 #endif
 
 typedef struct __smatrix_t {
+
+    /*
+    // old semi-csr structure
     int nrow;
     int ncol;
-    
-
     int maxcols;
-
     double * m;
     int   * idx_col;
     int * rcount;
     int * icount;
+    */
+
+    int nrow;
+    int ncol;
+    int nnz;
+
+    int* row_ptr;
+    int* col_idx;
+    double* values;
+
     slist ** smat;
     int isPacked;
             
@@ -37,7 +47,6 @@ typedef struct __smatrix_t {
     void*           extra;
     void*           idxColMem;
     
-
 } smatrix_t;
 
 //smatrix_t * smatrix_new( int nrow, int ncol, data_type type );
@@ -55,8 +64,6 @@ typedef struct __smatrix_t {
 //
 //slist * slist_add( slist * l, int col, double re, double im );
 //void slist_clear( slist * l );
-
-
 
 #ifdef __cplusplus
 }

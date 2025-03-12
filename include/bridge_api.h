@@ -53,6 +53,8 @@ typedef struct __bridge_t {
     void (*smatreqhost)( smatrix_t * v ) ;
     void (*smatreqdev) ( smatrix_t * v );
 
+    void (*print_smatrix) (const smatrix_t* matrix); //[Hiago]
+
     slist * (*slist_add)( slist * l, int col, double re, double im );
     void (*slist_clear)( slist * l );
 
@@ -87,8 +89,13 @@ typedef struct __bridge_t {
                 void * mCol, void * idxCol, 
                 int maxcols, int N ); 
     void * (*matVecMul3_f)(  void * mDev, void * vDev, int ncols, int nrows ); 
-    void * (*sparseVecMul_f)(void * mDev, void * idxCol, void * vDev, int nrows, int maxCols ); 
-    void * (*sparseComplexVecMul_f)(void * mDev, void * idxCol, void * vDev, int nrows, int maxCols ); 
+    //void * (*sparseVecMul_f)(void * mDev, void * idxCol, void * vDev, int nrows, int maxCols ); 
+    //void * (*sparseComplexVecMul_f)(void * mDev, void * idxCol, void * vDev, int nrows, int maxCols ); 
+    //[Hiago]
+    void * (*sparseVecMul_f)(void* v, void* m_values, void* m_row_ptr, void* m_col_idx, int m_nrows, int nnz ); 
+    void * (*sparseComplexVecMul_f)(void* v, void* m_values, void* m_row_ptr, void* m_col_idx, int m_nrows, int nnz );
+    //(void* mDev, void* idxCol, void* vDev, int nrows, int nnz )
+   
     void * (*matVecMul3Complex_f)(  void * mDev, void * vDev, int ncols, int nrows ); 
     void * (*matTranspose_f)(  void * mDev, int ncols, int nrows ); 
     double (*sumVector_f)( void * vDev, int len ); 

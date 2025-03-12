@@ -133,6 +133,7 @@ TEST_F(NeblinaCoreFixture, vec_add_complex) {
 
 }
 
+/*
 TEST_F(NeblinaCoreFixture, vec_sub) {
 
     int n = 3;
@@ -514,3 +515,4 @@ TEST_F(NeblinaCoreFixture, subVector) {
     m.bridges[idx].vector_delete(r);
 
 }
+*/

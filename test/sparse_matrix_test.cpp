@@ -48,7 +48,7 @@ public:
 
 };
 
-
+// [Hiago] It was already commented
 // TEST_F(SparseMatrixFixture, smatvec_multiply_WithSparseMatrixFloat) {
 //     GTEST_SKIP();
 //     int n = 10;
@@ -102,6 +102,7 @@ public:
 
 // }
 
+ //[Hiago] OK
 TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixFloat) {
 
     int n = 10;
@@ -114,40 +115,32 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixFloat) {
         a->value.f[i] = 3.;
     }
 
-
     m.bridges[idx].smatrix_set_real_value(b, 0, 0, 3.);
     m.bridges[idx].smatrix_set_real_value(b, 0, 1, 3.);
     m.bridges[idx].smatrix_set_real_value(b, 0, 9, 3.);
-
 
     m.bridges[idx].smatrix_set_real_value(b, 1, 1, 3.);
     m.bridges[idx].smatrix_set_real_value(b, 1, 5, 3.);
     m.bridges[idx].smatrix_set_real_value(b, 1, 8, 3.);
 
-
     m.bridges[idx].smatrix_set_real_value(b, 2, 2, 3.);
     m.bridges[idx].smatrix_set_real_value(b, 2, 4, 3.);
     m.bridges[idx].smatrix_set_real_value(b, 2, 7, 3.);
-
 
     m.bridges[idx].smatrix_set_real_value(b, 3, 3, 3.);
     m.bridges[idx].smatrix_set_real_value(b, 3, 1, 3.);
     m.bridges[idx].smatrix_set_real_value(b, 3, 6, 3.);
 
-
     m.bridges[idx].smatrix_pack(b);
-
 
     object_t ** in = convertToObject4(a, b);
 
-
     r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
-
-
+    
     m.bridges[idx].vecreqhost(r);
-
-
+    
     EXPECT_EQ(27., r->value.f[0]);
+    
     EXPECT_EQ(27., r->value.f[1]);
     EXPECT_EQ(27., r->value.f[2]);
     EXPECT_EQ(27., r->value.f[3]);
@@ -158,18 +151,14 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixFloat) {
     EXPECT_EQ(0., r->value.f[8]);
     EXPECT_EQ(0., r->value.f[9]);
 
-
     delete_object_array(in, 2);
 
     m.bridges[idx].vector_delete(a);
-
     m.bridges[idx].vector_delete(r);
-
     m.bridges[idx].smatrix_delete(b);
-
-
 }
 
+//[Hiago] OK
 TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixComplex) {
 
     int n = 70;
@@ -177,12 +166,12 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixComplex) {
     vector_t * a = m.bridges[idx].vector_new(n, T_COMPLEX, 1, NULL );
     smatrix_t * b = m.bridges[idx].smatrix_new(n, n, T_COMPLEX);
     vector_t * r;
-
+    
     for (int i = 0; i < a->len; i++) {
         a->value.f[2 * i] = 3.;
         a->value.f[2 * i + 1] = 3.;
     }
-
+    
     m.bridges[idx].smatrix_set_complex_value(b, 0, 0, 3., 3.);
     m.bridges[idx].smatrix_set_complex_value(b, 0, 1, 3., 3.);
     m.bridges[idx].smatrix_set_complex_value(b, 0, 9, 3., 3.);
@@ -207,8 +196,18 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixComplex) {
 
     object_t ** in = convertToObject4(a, b);
 
-    r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
+    /*
+    printf(":::idxColMem ");
+    int* arr = (int*)b->idxColMem;  // Cast to the expected type (e.g., int*)
+        
+    for (int i = 0; i < b->nnz; i++) {
+        printf("%d ", arr[i]);
+    }
+    printf("\n");
+    */
 
+    r = (vector_t *) matvec_mul3(&m, idx, (void **) in, NULL);
+    
     m.bridges[idx].vecreqhost(r);
 
     EXPECT_EQ(0., r->value.f[0]);
@@ -235,9 +234,10 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithSparseMatrixComplex) {
     m.bridges[idx].vector_delete(a);
     m.bridges[idx].smatrix_delete(b);
     m.bridges[idx].vector_delete(r);
-
+    
 }
 
+ //[Hiago] OK
 TEST_F(SparseMatrixFixture, matvec_mul3_WithLargeSparseMatrixFloat) {
 
     int n = 1000;
@@ -275,7 +275,6 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithLargeSparseMatrixFloat) {
 
     for (int i = 0; i < r->len; i++) {
         EXPECT_EQ(r_dense->value.f[i], r->value.f[i]);
-    
     }
 
     delete_object_array(in, 2);
@@ -289,6 +288,4 @@ TEST_F(SparseMatrixFixture, matvec_mul3_WithLargeSparseMatrixFloat) {
 
     m.bridges[idx].matrix_delete(b_dense);
     m.bridges[idx].vector_delete(r_dense);
-
-
 }

@@ -5,11 +5,196 @@
 #include <ctype.h>
 #include <math.h>
 #include <sys/time.h>
+#include <CL/cl.h>
 
 #include "libneblina.h"
 #include "neblina.h"
 #include "neblina_list.h"
 #include "bridge_api.h"
+#include "csr_matrix.h"
+
+smatrix_t *create_sparse_matrix(int nrow, int ncol, data_type type) {
+    smatrix_t *matrix = (smatrix_t *)malloc(sizeof(smatrix_t));
+    matrix->nrow = nrow;
+    matrix->ncol = ncol;
+    matrix->maxcols = ncol;
+    matrix->m = NULL;
+    matrix->idx_col = NULL;
+    matrix->rcount = (int *)calloc(nrow, sizeof(int));
+    matrix->icount = (int *)calloc(ncol, sizeof(int));
+    matrix->smat = (slist **)malloc(nrow * sizeof(slist *));
+
+    for (int i = 0; i < nrow; i++)
+        matrix->smat[i] = NULL;
+
+    matrix->isPacked = 0;
+    matrix->type = type;
+    matrix->location = 0;
+    matrix->extra = NULL;
+    matrix->idxColMem = NULL;
+    return matrix;
+}
+
+void add_value_to_sparse_matrix(smatrix_t *matrix, int row, int col, double value) {
+    if (row < 0 || row >= matrix->nrow || col < 0 || col >= matrix->ncol) {
+        printf("Erro: Índices fora do intervalo da matriz.\n");
+        return;
+    }
+
+    slist *new_node = (slist *)malloc(sizeof(slist));
+    new_node->col = col;
+    new_node->re = value;
+    new_node->next = matrix->smat[row];
+    matrix->smat[row] = new_node;
+
+    matrix->rcount[row]++;
+    matrix->icount[col]++;
+}
+
+void print_sparse_matrix(smatrix_t *matrix) {
+    for (int i = 0; i < matrix->nrow; i++) {
+        printf("Linha %d: ", i);
+        slist *current = matrix->smat[i];
+        while (current) {
+            printf("(Col: %d, Val: %.2f) ", current->col, current->re);
+            current = current->next;
+        }
+        printf("\n");
+    }
+}
+
+void free_sparse_matrix(smatrix_t *matrix) {
+    for (int i = 0; i < matrix->nrow; i++) {
+        slist *current = matrix->smat[i];
+        while (current) {
+            slist *temp = current;
+            current = current->next;
+            free(temp);
+        }
+    }
+    free(matrix->smat);
+    free(matrix->rcount);
+    free(matrix->icount);
+    free(matrix);
+}
+
+smatrix_t *multiply_sparse_matrices(smatrix_t *matrix1, smatrix_t *matrix2) {
+    if (matrix1->ncol != matrix2->nrow) {
+        printf("Error: Matrices incompatible for multiplication.\n");
+        return NULL;
+    }
+
+    smatrix_t *result = create_sparse_matrix(matrix1->nrow, matrix2->ncol, T_FLOAT);
+
+    for (int i = 0; i < result->nrow; i++) {
+        result->smat[i] = NULL; 
+        result->rcount[i] = 0;  
+    }
+
+    for (int i = 0; i < matrix1->nrow; i++) {
+        slist *row = matrix1->smat[i]; 
+
+        while (row) {
+            int col1 = row->col;   
+            double val1 = row->re;  
+
+            slist *col = matrix2->smat[col1];
+            while (col) {
+                int col2 = col->col;    
+                double val2 = col->re;  
+
+                double prod = val1 * val2;
+
+                slist *current = result->smat[i];
+                slist *prev = NULL;
+                int found = 0;
+
+                while (current) {
+                    if (current->col == col2) {
+                        current->re += prod;
+                        found = 1;
+                        break;
+                    }
+                    prev = current;
+                    current = current->next;
+                }
+
+                if (!found) {
+                    slist *new_node = (slist *)malloc(sizeof(slist));
+                    new_node->col = col2;
+                    new_node->re = prod;
+                    new_node->next = NULL;
+
+                    if (prev) {
+                        prev->next = new_node;
+                    } else {
+                        result->smat[i] = new_node;
+                    }
+
+                    result->rcount[i]++;
+                    result->icount[col2]++;
+                }
+
+                col = col->next; 
+            }
+
+            row = row->next;
+        }
+    }
+    return result;
+}
+
+void test_CPU(){
+    printf("Teste OpenCL\n");
+    smatrix_t *matrix1 = create_sparse_matrix(5, 5, T_FLOAT);
+    smatrix_t *matrix2 = create_sparse_matrix(5, 5, T_FLOAT);
+    
+    add_value_to_sparse_matrix(matrix1, 0, 0, 1);
+    add_value_to_sparse_matrix(matrix1, 0, 1, 1);
+    add_value_to_sparse_matrix(matrix1, 1, 3, 2);
+    add_value_to_sparse_matrix(matrix1, 4, 0, 3);
+
+    add_value_to_sparse_matrix(matrix2, 0, 0, 6);
+    add_value_to_sparse_matrix(matrix2, 2, 2, 4);
+    add_value_to_sparse_matrix(matrix2, 3, 4, 5);
+
+    printf("Matrix 1:\n");
+    print_sparse_matrix(matrix1);
+    
+    printf("\nMatrix 2:\n");
+    print_sparse_matrix(matrix2);
+
+    smatrix_t *result = multiply_sparse_matrices(matrix1, matrix2);
+
+    printf("\nResult:\n");
+    print_sparse_matrix(result);
+    
+    free_sparse_matrix(matrix1);
+    free_sparse_matrix(matrix2);
+    free_sparse_matrix(result);
+}
+
+int main() {
+    test_CPU();
+    
+    return 0;
+}
+
+///////////////////////////////////////
+
+void clear_input( void ** i, int nparams ) {
+    int k = 0;
+    object_t ** in = (object_t **) i;
+    for( k = 0; k < nparams; k++ ) {
+        if( type(*in[k]) == T_STRING )
+            free( svalue( *in[k] ) );
+        
+        if( type(*in[k]) == T_COMPLEX ) {
+            complex_t * r = (complex_t *)vvalue( *in[k] );
+            free( r );
+        }         
+    }
+}
 
 void runerror( char * strerr ) {
     fprintf(stderr, " runtime error: %s\n", strerr);
@@ -618,8 +803,8 @@ void ** copy_vector_from_device( bridge_manager_t *m, int idx, void ** i, int * 
         printf("callocated\n");
 
         printf("1\n");
-        printf("max_mem=%d\n", max_mem);
-        printf("(max_mem / sizeof(double))=%d\n", (max_mem / sizeof(double)));
+        printf("max_mem=%ld\n", max_mem);
+        printf("(max_mem / sizeof(double))=%ld\n", (max_mem / sizeof(double)));
         long qty_chunks = ceil((matrix_size * 1.0) / (max_mem / sizeof(double)));
         printf("qty_chunks=%ld\n", qty_chunks);
         printf("2\n");
@@ -1097,90 +1282,17 @@ matrix_t * mul_complex_scalar_float_mat( bridge_manager_t *mg, int index, comple
 //
 //
 //
-
-void print_smatrix(const smatrix_t* matrix) {
-    if (!matrix) {
-        printf("Matrix is NULL.\n");
-        return;
-    }
-
-    printf("Matrix (%p):\n", (void*)matrix);
-    printf("  Rows: %d, Cols: %d, NNZ: %d\n", matrix->nrow, matrix->ncol, matrix->nnz);
-    printf("  isPacked: %d\n", matrix->isPacked);
-    printf("  type: %d\n", matrix->type);
-    printf("  location: %u\n", matrix->location);
-    printf("  extra: %p\n", matrix->extra);
-    printf("  idxColMem: %p\n", matrix->idxColMem);
-
-    if (matrix->row_ptr) {
-        printf("  row_ptr: ");
-        for (int i = 0; i <= matrix->nrow; i++) {
-            printf("%d ", matrix->row_ptr[i]);
-        }
-        printf("\n");
-    } else {
-        printf("  row_ptr is NULL.\n");
-    }
-
-    if (matrix->col_idx) {
-        printf("  col_idx: ");
-        for (int i = 0; i < matrix->nnz; i++) {
-            printf("%d ", matrix->col_idx[i]);
-        }
-        printf("\n");
-    } else {
-        printf("  col_idx is NULL.\n");
-    }
-
-    if (matrix->values) {
-        printf("  values: ");
-        for (int i = 0; i < matrix->nnz; i++) {
-            printf("%.4f ", matrix->values[i]);
-        }
-        printf("\n");
-    } else {
-        printf("  values is NULL.\n");
-    }
-
-    if (matrix->smat) {
-        printf("  smat:\n");
-        for (int i = 0; i < matrix->nrow; i++) {
-            printf("    Row %d: ", i);
-            slist* current = matrix->smat[i];
-            while (current) {
-                printf("(col: %d, re: %.4f, im: %.4f) ", current->col, current->re, current->im);
-                current = current->next;
-            }
-            printf("\n");
-        }
-    } else {
-        printf("  smat is NULL.\n");
-    }
-}
-
-void printIdxColMem(void* idxColMem, int size) {
-    printf("idxColMem: ");
-    int* arr = (int*)idxColMem;  // Cast to the expected type (e.g., int*)
-    
-    for (int i = 0; i < size; i++) {
-        printf("%d ", arr[i]);
-    }
-    printf("\n");
-}
-
  void ** matvec_mul3( bridge_manager_t *mg, int index, void ** i, int * status ) {
-    
-           
         object_t ** in = (object_t **) i;
         vector_t * v = (vector_t *) vvalue( *in[0] );
         //vector_t * r = (vector_t *) malloc( sizeof( vector_t ) );
         vector_t * r;
-       
+        
         //do I have to assume that it needs to be copied everytime?
         if (v->location != LOCDEV) {
             mg->bridges[index].vecreqdev( v );
         }
-        
+
         if( type( *in[1] ) == T_MATRIX ) {        
 
             matrix_t * m = (matrix_t *) vvalue( *in[1] );
@@ -1211,67 +1323,36 @@ void printIdxColMem(void* idxColMem, int size) {
             return (void *) r;
 
         } else  if( type( *in[1] ) == T_SMATRIX ) {
-            //printf(">\n");
-            
-            smatrix_t * m = (smatrix_t *) vvalue( *in[1] );
-            
-            //printf("m: %p, vvalue(*in[1]): %p\n", (void*)m, (void*)vvalue(*in[1]));
-
-            r = mg->bridges[index].vector_new(m->nrow, m->type, 0, NULL );
-
-            mg->bridges[index].vecreqdev( r );
-
-            //printf("<<<<<<<"); print_smatrix(m);
-
-            //m->location = 0;
-            printf("location: %d \n", m->location);
-            if (m->location != LOCDEV) {
-                mg->bridges[index].smatreqdev( m );
-            }
-
-            //printf("nnz= %d\n", m->nnz);
-            //printIdxColMem(m->idxColMem, m->nnz);
-
-            //printf(">>>>>>>>"); print_smatrix(m);
-
-            //printIdxColMem(m->idxColMem, m->nnz);
-
-            if( m->type == T_FLOAT && v->type == T_FLOAT ) {
-                //printf(">>\n");
-                // printf("sparse matvec_mul3 float x float\n");
-                r->extra = (void*)mg->bridges[index].sparseVecMul_f(v->extra, m->extra, m->row_ptr, m->idxColMem, m->nrow, m->nnz );
-                // printf("sparse  matvec_mul3 back\n");
-//                r->location = LOCDEV;
-//                r->value.f = NULL;
-//                r->len = m->nrow;
+                smatrix_t * m = (smatrix_t *) vvalue( *in[1] );
+                r = mg->bridges[index].vector_new(m->nrow, m->type, 0, NULL );
+                mg->bridges[index].vecreqdev( r );
+                if (m->location != LOCDEV) {
+                    mg->bridges[index].smatreqdev( m );
+                }
+                if( m->type == T_FLOAT && v->type == T_FLOAT ) {
+                    // printf("sparse matvec_mul3 float x float\n");
+                    r->extra = (void*)mg->bridges[index].sparseVecMul_f( m->extra, m->idxColMem, v->extra, m->nrow, m->maxcols );
+                    // printf("sparse  matvec_mul3 back\n");
+//                    r->location = LOCDEV;
+//                    r->value.f = NULL;
+//                    r->len = m->nrow;
 //                    r->type = T_FLOAT;
                     
-            } else if( m->type == T_COMPLEX && v->type == T_COMPLEX ) {
+                } else if( m->type == T_COMPLEX && v->type == T_COMPLEX ) {
                     // printf("sparse matvec_mul3 complex x complex \n");
-                    //printf("nnz= %d\n", m->nnz);
-                    //printIdxColMem(m->idxColMem, m->nnz);
-
-                    printf(":::idxColMem ");
-                    int* arr = (int*)m->idxColMem;  // Cast to the expected type (e.g., int*)
-                        
-                    for (int i = 0; i < m->nnz; i++) {
-                        printf("%d ", arr[i]);
-                    }
-                    printf("\n");
-
-                    r->extra = (void*)mg->bridges[index].sparseComplexVecMul_f(v->extra, m->extra, m->row_ptr, m->idxColMem, m->nrow, m->nnz );
+                    r->extra = (void*)mg->bridges[index].sparseComplexVecMul_f( m->extra, m->idxColMem, v->extra, m->nrow, m->maxcols );
 //                    r->location = LOCDEV;
 //                    r->value.f = NULL;
 //                    r->len = m->nrow;
 //                    r->type = T_COMPLEX;
-            } else {
-                // printf("sparse matvec_mul3 other types\n");
-            }
-            if (status != NULL) {
+                } else {
+                    // printf("sparse matvec_mul3 other types\n");
+                }
+                if (status != NULL) {
                     *status = 0;
-             }
-            return (void *) r;
-            
+                }
+                return (void *) r;
+
         } else if(  type( *in[1] ) == T_RMATRIX ) {
 //                rmatrix_t * m = (rmatrix_t *) vvalue( *in[1] );
 //                r->extra = (void*)rmatVecMul3Complex( m, v->extra, m->ncol, m->nrow );
@@ -1294,7 +1375,8 @@ void printIdxColMem(void* idxColMem, int size) {
                 *status = -1;
             }
             return (void **)NULL;   
-        }             
+        }
+             
 }
 
 // void ** matvec_mul_cpu( void ** i, int * status ) {
@@ -1878,5 +1960,3 @@ void printIdxColMem(void* idxColMem, int size) {
 ////
 ////
 ////
-
-
